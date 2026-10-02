@@ -1437,14 +1437,15 @@ class StartedTutorialEventHandler(
 ):
     """Records that this user has started the state editor tutorial."""
 
+    GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
     URL_PATH_ARGS_SCHEMAS = {
         'exploration_id': {'schema': SCHEMA_FOR_EXPLORATION_ID}
     }
     HANDLER_ARGS_SCHEMAS: Dict[str, Dict[str, str]] = {'POST': {}}
 
-    @acl_decorators.can_play_exploration
+    @acl_decorators.can_play_exploration_as_logged_in_user
     def post(self, unused_exploration_id: str) -> None:
-        """Handles GET requests."""
+        """Handles POST requests."""
         assert self.user_id is not None
         user_services.record_user_started_state_editor_tutorial(self.user_id)
         self.render_json({})

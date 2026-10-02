@@ -1267,6 +1267,27 @@ class StartedTutorialEventHandlerTests(test_utils.GenericTestBase):
 
         self.logout()
 
+    def test_logged_out_user_cannot_record_started_tutorial(self) -> None:
+        exp_id = 'eid'
+        owner_id = self.get_user_id_from_email(self.OWNER_EMAIL)
+        self.save_new_valid_exploration(exp_id, owner_id)
+        rights_manager.publish_exploration(
+            user_services.get_user_actions_info(owner_id), exp_id
+        )
+        csrf_token = self.get_new_csrf_token()
+
+        response = self.post_json(
+            '/createhandler/started_tutorial_event/%s' % exp_id,
+            {},
+            csrf_token=csrf_token,
+            expected_status_int=401,
+        )
+
+        self.assertEqual(
+            response['error'],
+            'You must be logged in to access this resource.',
+        )
+
 
 class TopUnresolvedAnswersHandlerTests(test_utils.GenericTestBase):
 
