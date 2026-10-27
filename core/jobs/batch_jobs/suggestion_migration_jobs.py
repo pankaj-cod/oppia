@@ -269,7 +269,13 @@ class MigrateQuestionSuggestionsJob(base_jobs.JobBase):
                 versioned_question_state
             )
 
-            question_dict['next_content_id_index'] = next_content_id_index
+            # migrate_state_schema() only returns the next content ID index
+            # when the migration goes through the v54 -> v55 step, which moves
+            # it from the state to the question. For questions that are
+            # already at v55 or later it returns None, so the existing value
+            # must be kept (the same as in get_question_from_model()).
+            if next_content_id_index is not None:
+                question_dict['next_content_id_index'] = next_content_id_index
             question_dict['question_state_data_schema_version'] = (
                 versioned_question_state['state_schema_version']
             )

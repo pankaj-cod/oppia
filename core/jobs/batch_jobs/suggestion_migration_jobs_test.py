@@ -615,6 +615,89 @@ class MigrateQuestionSuggestionsJobTests(
             feconf.CURRENT_STATE_SCHEMA_VERSION,
         )
 
+    def test_question_suggestion_already_past_v55_is_migrated(self) -> None:
+        # Questions at state schema v55 or later already store
+        # next_content_id_index at the question level, so the migration
+        # must keep it instead of overwriting it with None.
+        skill_id = skill_services.get_new_skill_id()
+        self.save_new_skill(skill_id, self.author_id, description='description')
+        content_id_generator = translation_domain.ContentIdGenerator()
+        state = self._create_valid_question_data(
+            'default-state', content_id_generator
+        )
+        suggestion_change: Dict[
+            str, Union[str, float, question_domain.QuestionDict]
+        ] = {
+            'cmd': (question_domain.CMD_CREATE_NEW_FULLY_SPECIFIED_QUESTION),
+            'question_dict': {
+                'id': 'test_id',
+                'version': 12,
+                'question_state_data': state.to_dict(),
+                'language_code': 'en',
+                'question_state_data_schema_version': (
+                    feconf.CURRENT_STATE_SCHEMA_VERSION
+                ),
+                'linked_skill_ids': ['skill_1'],
+                'inapplicable_skill_misconception_ids': ['skillid12345-1'],
+                'next_content_id_index': (
+                    content_id_generator.next_content_id_index
+                ),
+            },
+            'skill_id': skill_id,
+            'skill_difficulty': 0.3,
+        }
+        suggestion_id = suggestion_services.create_suggestion(
+            feconf.SUGGESTION_TYPE_ADD_QUESTION,
+            feconf.ENTITY_TYPE_SKILL,
+            skill_id,
+            1,
+            self.author_id,
+            suggestion_change,
+            'test description',
+        ).suggestion_id
+
+        # Turn the stored question into a v56 one. The v56 -> v57 migration
+        # only removes recorded_voiceovers from the state.
+        suggestion_model = suggestion_models.GeneralSuggestionModel.get_by_id(
+            suggestion_id
+        )
+        question_dict = suggestion_model.change_cmd['question_dict']
+        question_dict['question_state_data_schema_version'] = 56
+        question_dict['question_state_data']['recorded_voiceovers'] = {
+            'voiceovers_mapping': {}
+        }
+        suggestion_model.update_timestamps()
+        suggestion_model.put()
+
+        self.assert_job_output_is(
+            [
+                job_run_result.JobRunResult(
+                    stdout='QUESTION MODELS COUNT SUCCESS: 1'
+                ),
+                job_run_result.JobRunResult(
+                    stdout='SUGGESTION MIGRATED SUCCESS: 1'
+                ),
+            ]
+        )
+
+        migrated_question_dict = (
+            suggestion_models.GeneralSuggestionModel.get_by_id(
+                suggestion_id
+            ).change_cmd['question_dict']
+        )
+        self.assertEqual(
+            migrated_question_dict['question_state_data_schema_version'],
+            feconf.CURRENT_STATE_SCHEMA_VERSION,
+        )
+        self.assertEqual(
+            migrated_question_dict['next_content_id_index'],
+            content_id_generator.next_content_id_index,
+        )
+        self.assertNotIn(
+            'recorded_voiceovers',
+            migrated_question_dict['question_state_data'],
+        )
+
     def test_migration_errors_are_reported_in_job_result(self) -> None:
         skill_id = skill_services.get_new_skill_id()
         self.save_new_skill(skill_id, self.author_id, description='description')
